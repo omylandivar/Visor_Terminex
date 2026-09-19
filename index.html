@@ -1,3 +1,388 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Visor TERMINEX</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Inconsolata:wght@300;400&display=swap" rel="stylesheet"/>
+
+<style>
+:root{
+  --bg:#0b1120; --panel:#111827; --border:#1e3a5f;
+  --accent:#00c6a7; --accent2:#0077ff; --text:#cde4f4; --muted:#4a7fa5;
+  --danger:#ff4d6d; --warn:#ffb020; --radius:8px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{
+  background:var(--bg); color:var(--text); font-family:'Inconsolata',monospace;
+  height:100vh; display:flex; flex-direction:column; overflow:hidden;
+}
+header{
+  display:flex; align-items:center; gap:14px; padding:10px 20px;
+  background:var(--panel); border-bottom:1px solid var(--border); flex-shrink:0; z-index:1000;
+}
+.logo-dot{
+  width:36px; height:36px; border-radius:50%;
+  background:conic-gradient(var(--accent) 0%,var(--accent2) 50%,var(--accent) 100%);
+  display:flex; align-items:center; justify-content:center; font-size:16px;
+  animation:spin 12s linear infinite; flex-shrink:0;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+header h1{
+  font-family:'Rajdhani',sans-serif; font-size:1.4rem; font-weight:700;
+  letter-spacing:2px; color:var(--accent); text-transform:uppercase;
+}
+header h1 span{color:var(--text);}
+.subtitle{font-size:0.68rem; color:var(--muted); letter-spacing:1px; margin-top:-2px;}
+.header-right{margin-left:auto; display:flex; align-items:center; gap:12px;}
+#status-dot{width:9px; height:9px; border-radius:50%; background:var(--muted); transition:background .4s;}
+#status-dot.ok{background:var(--accent); box-shadow:0 0 6px var(--accent);}
+#status-dot.err{background:var(--danger); box-shadow:0 0 6px var(--danger);}
+#status-label{font-size:0.72rem; color:var(--muted); letter-spacing:1px;}
+#refresh-btn{
+  background:var(--bg); border:1px solid var(--border); color:var(--accent);
+  border-radius:var(--radius); width:32px; height:32px; cursor:pointer; font-size:0.9rem;
+}
+#refresh-btn:hover{border-color:var(--accent);}
+#refresh-btn.spinning{animation:spin 0.8s linear infinite;}
+
+nav#tabs{
+  display:flex; gap:2px; background:var(--panel); border-bottom:1px solid var(--border);
+  padding:0 12px; flex-shrink:0; overflow-x:auto;
+}
+nav#tabs button{
+  background:transparent; border:none; color:var(--muted); font-family:'Rajdhani',sans-serif;
+  font-size:0.85rem; font-weight:600; letter-spacing:0.5px; padding:10px 16px; cursor:pointer;
+  border-bottom:2px solid transparent; white-space:nowrap;
+}
+nav#tabs button:hover{color:var(--text);}
+nav#tabs button.active{color:var(--accent); border-bottom-color:var(--accent);}
+
+main{flex:1; overflow:hidden; position:relative;}
+.view{display:none; height:100%; overflow:auto;}
+.view.active{display:block;}
+
+/* MAP VIEW */
+#view-mapa{display:none; height:100%; overflow:hidden;}
+#view-mapa.active{display:flex;}
+#map{flex:1; background:#0a0f1e;}
+#map-side{
+  width:260px; min-width:260px; background:var(--panel); border-left:1px solid var(--border);
+  overflow-y:auto; padding:12px;
+}
+.map-toggle{
+  display:flex; align-items:center; gap:8px; padding:8px 10px; margin-bottom:8px;
+  background:var(--bg); border:1px solid var(--border); border-radius:var(--radius);
+  cursor:pointer; font-size:0.78rem;
+}
+.map-toggle input{accent-color:var(--accent); cursor:pointer;}
+.legend-dot{width:11px; height:11px; border-radius:50%; flex-shrink:0; display:inline-block;}
+.map-side-title{font-family:'Rajdhani',sans-serif; font-size:0.7rem; letter-spacing:2px; color:var(--muted); text-transform:uppercase; margin:10px 0 6px;}
+.stat-card{background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:10px; margin-bottom:8px;}
+.stat-num{font-family:'Rajdhani',sans-serif; font-size:1.5rem; font-weight:700; color:var(--accent);}
+.stat-label{font-size:0.68rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px;}
+
+/* TABLE VIEWS */
+.table-wrap{padding:14px 18px;}
+.table-toolbar{display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap;}
+.table-search{
+  background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+  color:var(--text); font-family:'Inconsolata',monospace; font-size:0.8rem; padding:8px 12px; flex:1; min-width:180px; outline:none;
+}
+.table-search:focus{border-color:var(--accent);}
+.table-count{font-size:0.72rem; color:var(--muted); white-space:nowrap;}
+.table-scroll{overflow:auto; border:1px solid var(--border); border-radius:var(--radius); max-height:calc(100vh - 210px);}
+table.data-table{width:100%; border-collapse:collapse; font-size:0.78rem;}
+table.data-table th{
+  position:sticky; top:0; background:var(--panel); color:var(--accent); padding:9px 12px;
+  text-align:left; cursor:pointer; border-bottom:1px solid var(--border); white-space:nowrap; z-index:2;
+}
+table.data-table th:hover{color:var(--accent2);}
+table.data-table td{padding:8px 12px; border-bottom:1px solid var(--border); color:var(--text); white-space:nowrap;}
+table.data-table tbody tr:hover{background:rgba(0,198,167,0.07);}
+table.data-table tbody tr:nth-child(even){background:rgba(255,255,255,0.015);}
+.badge{display:inline-block; padding:2px 8px; border-radius:20px; font-size:0.7rem; font-weight:600;}
+.badge-plaga{background:rgba(255,77,109,0.15); color:var(--danger);}
+.badge-maleza{background:rgba(255,176,32,0.15); color:var(--warn);}
+.badge-enfermedad{background:rgba(0,119,255,0.15); color:var(--accent2);}
+.badge-activo{background:rgba(0,198,167,0.15); color:var(--accent);}
+.badge-completado{background:rgba(0,198,167,0.15); color:var(--accent);}
+.badge-programado{background:rgba(255,176,32,0.15); color:var(--warn);}
+.loading-msg,.empty-msg{padding:30px; text-align:center; color:var(--muted); font-size:0.85rem;}
+
+/* Leaflet overrides */
+.leaflet-control-zoom a{background:var(--panel) !important; color:var(--accent) !important; border-color:var(--border) !important;}
+.leaflet-control-attribution{background:rgba(11,17,32,.85) !important; color:var(--muted) !important; font-size:10px !important;}
+.leaflet-popup-content-wrapper{background:var(--panel) !important; color:var(--text) !important; border:1px solid var(--border); border-radius:var(--radius) !important;}
+.leaflet-popup-tip{background:var(--panel) !important;}
+.popup-title{font-family:'Rajdhani',sans-serif; font-weight:700; color:var(--accent); font-size:1rem; margin-bottom:6px;}
+.popup-row{font-size:0.76rem; margin-bottom:2px; line-height:1.5;}
+.popup-row b{color:var(--muted); font-weight:400;}
+
+footer{
+  padding:6px 18px; background:var(--panel); border-top:1px solid var(--border);
+  font-size:0.66rem; color:var(--muted); letter-spacing:0.5px; flex-shrink:0;
+}
+footer a{color:var(--accent2);}
+
+@media (max-width:820px){
+  header h1{font-size:1.1rem;}
+  .subtitle{display:none;}
+  #view-mapa.active{flex-direction:column;}
+  #map-side{width:100%; min-width:0; max-height:40vh; border-left:none; border-top:1px solid var(--border);}
+  nav#tabs button{padding:9px 11px; font-size:0.78rem;}
+  .table-scroll{max-height:calc(100vh - 260px);}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-dot">🌱</div>
+  <div>
+    <h1>TERMINEX</h1>
+    <div class="subtitle">MONITOREO AGRÍCOLA · FEDEPA</div>
+  </div>
+  <div class="header-right">
+    <div id="status-dot"></div>
+    <div id="status-label">Cargando...</div>
+    <button id="refresh-btn" title="Actualizar ahora">⟲</button>
+  </div>
+</header>
+
+<nav id="tabs">
+  <button data-view="mapa" class="active">🗺 Mapa</button>
+  <button data-view="cultivos">🌾 Cultivos</button>
+  <button data-view="insumos">📦 Insumos</button>
+  <button data-view="trabajos">🔧 Trabajos</button>
+  <button data-view="visitas">📋 Visitas</button>
+  <button data-view="problemas">🐛 Problemas</button>
+  <button data-view="usuarios">👤 Usuarios</button>
+</nav>
+
+<main>
+  <div id="view-mapa" class="view active">
+    <div id="map"></div>
+    <div id="map-side">
+      <div class="map-side-title">Capas</div>
+      <label class="map-toggle"><input type="checkbox" id="toggle-campos" checked><span class="legend-dot" style="background:#00c6a7"></span> Campos (parcelas)</label>
+      <label class="map-toggle"><input type="checkbox" id="toggle-visitas" checked><span class="legend-dot" style="background:#ff4d6d"></span> Visitas recientes</label>
+
+      <div class="map-side-title">Resumen en vivo</div>
+      <div class="stat-card"><div class="stat-num" id="stat-campos">–</div><div class="stat-label">Campos registrados</div></div>
+      <div class="stat-card"><div class="stat-num" id="stat-cultivos">–</div><div class="stat-label">Cultivos activos</div></div>
+      <div class="stat-card"><div class="stat-num" id="stat-visitas">–</div><div class="stat-label">Visitas totales</div></div>
+      <div class="stat-card"><div class="stat-num" id="stat-ha">–</div><div class="stat-label">Hectáreas monitoreadas</div></div>
+    </div>
+  </div>
+
+  <div id="view-cultivos" class="view table-wrap"></div>
+  <div id="view-insumos" class="view table-wrap"></div>
+  <div id="view-trabajos" class="view table-wrap"></div>
+  <div id="view-visitas" class="view table-wrap"></div>
+  <div id="view-problemas" class="view table-wrap"></div>
+  <div id="view-usuarios" class="view table-wrap"></div>
+</main>
+
+<footer>Datos en vivo desde Google Sheets · Última actualización automática cada 3 min · TERMINEX para FEDEPA</footer>
+
+<script>
+const SHEET_ID = '1TXlPRHxCGTY7KRpSY6uN2aqNMEIcWfSPO5K8w8ND6q8';
+const TABLES = {
+  campos: 'Campos', cultivos: 'Cultivos', insumos: 'Insumos',
+  trabajos: 'Trabajos', visitas: 'Visitas', problemas: 'Catalogo_Problemas', usuarios: 'Usuarios'
+};
+let DATA = {};
+let map, camposLayer, visitasLayer;
+let refreshTimer;
+
+function statusSet(ok, label){
+  const dot = document.getElementById('status-dot');
+  dot.className = ok ? 'ok' : 'err';
+  document.getElementById('status-label').textContent = label;
+}
+
+async function fetchSheet(sheetName){
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}&_=${Date.now()}`;
+  const res = await fetch(url, {cache:'no-store'});
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  const text = await res.text();
+  const start = text.indexOf('{'); const end = text.lastIndexOf('}');
+  const json = JSON.parse(text.substring(start, end+1));
+  if(!json.table) return {cols:[], rows:[]};
+  const cols = json.table.cols.map(c => (c.label || c.id || '').trim());
+  const rows = (json.table.rows||[]).map(r => (r.c||[]).map(cell => {
+    if(!cell) return '';
+    if(cell.f !== undefined && cell.f !== null) return cell.f;
+    if(cell.v !== undefined && cell.v !== null) return cell.v;
+    return '';
+  }));
+  return {cols, rows};
+}
+
+function rowsToObjects(sheet){
+  return sheet.rows.map(r => {
+    const o = {};
+    sheet.cols.forEach((c,i) => { if(c) o[c] = r[i] !== undefined ? r[i] : ''; });
+    return o;
+  }).filter(o => Object.values(o).some(v => String(v).trim() !== ''));
+}
+
+function parseLatLng(str){
+  if(!str) return null;
+  const parts = String(str).split(',');
+  if(parts.length < 2) return null;
+  const lat = parseFloat(parts[0].trim()), lng = parseFloat(parts[1].trim());
+  if(isNaN(lat) || isNaN(lng)) return null;
+  return [lat, lng];
+}
+
+async function loadAll(){
+  const btn = document.getElementById('refresh-btn');
+  btn.classList.add('spinning');
+  statusSet(false, 'Actualizando...');
+  try{
+    const keys = Object.keys(TABLES);
+    const results = await Promise.all(keys.map(k => fetchSheet(TABLES[k])));
+    keys.forEach((k,i) => DATA[k] = rowsToObjects(results[i]));
+    buildLookups();
+    renderMap();
+    renderTable('cultivos', ['Tipo_Cultivo','Variedad','Estado']);
+    renderTable('insumos', ['Nombre','Tipo']);
+    renderTable('trabajos', ['Tipo_Trabajo','Estado']);
+    renderTable('visitas', ['Tipo_Observacion','Severidad']);
+    renderTable('problemas', ['Tipo']);
+    renderTable('usuarios', ['Rol']);
+    updateStats();
+    const now = new Date();
+    statusSet(true, 'Actualizado ' + now.toLocaleTimeString('es-BO', {hour:'2-digit', minute:'2-digit', second:'2-digit'}));
+  }catch(err){
+    console.error(err);
+    statusSet(false, 'Error al cargar datos');
+  }
+  btn.classList.remove('spinning');
+}
+
+let LOOKUP_USUARIOS = {}, LOOKUP_PROBLEMAS = {}, LOOKUP_CAMPOS = {}, LOOKUP_CULTIVOS = {}, LOOKUP_INSUMOS = {};
+function buildLookups(){
+  LOOKUP_USUARIOS = {}; (DATA.usuarios||[]).forEach(u => LOOKUP_USUARIOS[u.ID_Usuario] = u.Nombre);
+  LOOKUP_PROBLEMAS = {}; (DATA.problemas||[]).forEach(p => LOOKUP_PROBLEMAS[p.ID_Problema] = p.Nombre_Comun);
+  LOOKUP_CAMPOS = {}; (DATA.campos||[]).forEach(c => LOOKUP_CAMPOS[c.ID_Campo] = c.Nombre_Campo);
+  LOOKUP_CULTIVOS = {}; (DATA.cultivos||[]).forEach(c => LOOKUP_CULTIVOS[c.ID_Cultivo] = c.Tipo_Cultivo);
+  LOOKUP_INSUMOS = {}; (DATA.insumos||[]).forEach(i => LOOKUP_INSUMOS[i.ID_Insumo] = i.Nombre);
+}
+function friendly(colName, val){
+  if(val === undefined || val === '' || val === null) return '—';
+  if(colName === 'Responsable' || colName === 'Tecnico') return LOOKUP_USUARIOS[val] ? `${LOOKUP_USUARIOS[val]}` : val;
+  if(colName === 'ID_Problema') return LOOKUP_PROBLEMAS[val] || val;
+  if(colName === 'ID_Campo') return LOOKUP_CAMPOS[val] || val;
+  if(colName === 'ID_Cultivo') return LOOKUP_CULTIVOS[val] || val;
+  if(colName === 'ID_Insumo') return LOOKUP_INSUMOS[val] || val;
+  return val;
+}
+
+function badgeFor(colName, val){
+  const v = String(val||'').toLowerCase();
+  let cls = '';
+  if(['plaga'].includes(v)) cls='badge-plaga';
+  else if(['maleza'].includes(v)) cls='badge-maleza';
+  else if(['enfermedad'].includes(v)) cls='badge-enfermedad';
+  else if(['activo','sí','si','completado'].includes(v)) cls='badge-activo';
+  else if(['programado'].includes(v)) cls='badge-programado';
+  if(cls) return `<span class="badge ${cls}">${val}</span>`;
+  return null;
+}
+
+function renderTable(key, badgeCols){
+  const container = document.getElementById('view-'+key);
+  const items = DATA[key] || [];
+  if(items.length === 0){
+    container.innerHTML = '<div class="empty-msg">Sin registros todavía en esta tabla.</div>';
+    return;
+  }
+  const cols = Object.keys(items[0]);
+  const bset = new Set(badgeCols||[]);
+
+  const searchId = 'search-'+key;
+  let html = `<div class="table-toolbar">
+    <input type="text" class="table-search" id="${searchId}" placeholder="Buscar en ${key}...">
+    <div class="table-count" id="count-${key}">${items.length} registros</div>
+  </div>
+  <div class="table-scroll"><table class="data-table" id="table-${key}">
+  <thead><tr>${cols.map(c=>`<th data-col="${c}">${c}</th>`).join('')}</tr></thead>
+  <tbody>${renderRows(items, cols, bset)}</tbody>
+  </table></div>`;
+  container.innerHTML = html;
+
+  document.getElementById(searchId).addEventListener('input', (e)=>{
+    const q = e.target.value.toLowerCase();
+    const filtered = items.filter(it => cols.some(c => String(friendly(c,it[c])).toLowerCase().includes(q)));
+    document.querySelector(`#table-${key} tbody`).innerHTML = renderRows(filtered, cols, bset);
+    document.getElementById(`count-${key}`).textContent = filtered.length + ' registros';
+  });
+
+  let sortDir = {};
+  container.querySelectorAll('th').forEach(th => {
+    th.addEventListener('click', ()=>{
+      const c = th.dataset.col;
+      sortDir[c] = !sortDir[c];
+      const sorted = [...items].sort((a,b)=>{
+        const av = String(friendly(c,a[c])), bv = String(friendly(c,b[c]));
+        return sortDir[c] ? av.localeCompare(bv) : bv.localeCompare(av);
+      });
+      document.querySelector(`#table-${key} tbody`).innerHTML = renderRows(sorted, cols, bset);
+    });
+  });
+}
+
+function renderRows(items, cols, bset){
+  return items.map(it => `<tr>${cols.map(c=>{
+    const val = friendly(c, it[c]);
+    const b = bset.has(c) ? badgeFor(c, val) : null;
+    return `<td>${b || (val===''||val==null?'—':val)}</td>`;
+  }).join('')}</tr>`).join('');
+}
+
+function updateStats(){
+  document.getElementById('stat-campos').textContent = (DATA.campos||[]).length;
+  document.getElementById('stat-cultivos').textContent = (DATA.cultivos||[]).filter(c=>String(c.Estado||'').toLowerCase()==='activo').length;
+  document.getElementById('stat-visitas').textContent = (DATA.visitas||[]).length;
+  const ha = (DATA.campos||[]).reduce((s,c)=> s + (parseFloat(String(c.Area_Hectareas).replace(',','.'))||0), 0);
+  document.getElementById('stat-ha').textContent = ha.toFixed(1);
+}
+
+function initMap(){
+  map = L.map('map', {zoomControl:true}).setView([-17.6, -63.4], 8);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution:'&copy; OpenStreetMap', maxZoom:19
+  }).addTo(map);
+  camposLayer = L.layerGroup().addTo(map);
+  visitasLayer = L.layerGroup().addTo(map);
+
+  document.getElementById('toggle-campos').addEventListener('change', e=>{
+    if(e.target.checked) map.addLayer(camposLayer); else map.removeLayer(camposLayer);
+  });
+  document.getElementById('toggle-visitas').addEventListener('change', e=>{
+    if(e.target.checked) map.addLayer(visitasLayer); else map.removeLayer(visitasLayer);
+  });
+}
+
+function severityColor(sev){
+  const s = String(sev||'').toLowerCase();
+  if(s.startsWith('alta')||s==='alto') return '#ff4d6d';
+  if(s.startsWith('media')||s==='medio') return '#ffb020';
+  return '#00c6a7';
+}
+
+function renderMap(){
+  camposLayer.clearLayers();
+  visitasLayer.clearLayers();
+  const bounds = [];
+
+  (DATA.campos||[]).forEach(c=>{
     const ll = parseLatLng(c.Ubicacion_GPS);
     if(!ll) return;
     bounds.push(ll);
@@ -11,7 +396,6 @@
       <div class="popup-row"><b>Notas:</b> ${c.Notas||'—'}</div>
     `);
   });
-
 
   (DATA.visitas||[]).forEach(v=>{
     const ll = parseLatLng(v.Ubicacion_GPS);
@@ -31,10 +415,8 @@
     `);
   });
 
-
   if(bounds.length) map.fitBounds(bounds, {padding:[30,30]});
 }
-
 
 function initTabs(){
   document.querySelectorAll('#tabs button').forEach(btn=>{
@@ -48,9 +430,7 @@ function initTabs(){
   });
 }
 
-
 document.getElementById('refresh-btn').addEventListener('click', loadAll);
-
 
 initMap();
 initTabs();
@@ -59,4 +439,3 @@ refreshTimer = setInterval(loadAll, 3*60*1000);
 </script>
 </body>
 </html>
-
