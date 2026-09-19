@@ -206,7 +206,7 @@ function statusSet(ok, label){
 }
 
 async function fetchSheet(sheetName){
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}&_=${Date.now()}`;
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&headers=1&sheet=${encodeURIComponent(sheetName)}&_=${Date.now()}`;
   const res = await fetch(url, {cache:'no-store'});
   if(!res.ok) throw new Error('HTTP '+res.status);
   const text = await res.text();
