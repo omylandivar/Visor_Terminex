@@ -73,6 +73,14 @@ main{flex:1; overflow:hidden; position:relative;}
   width:260px; min-width:260px; background:var(--panel); border-left:1px solid var(--border);
   overflow-y:auto; padding:12px;
 }
+.basemap-switch{display:flex; gap:4px; margin-bottom:10px;}
+.basemap-switch button{
+  flex:1; background:var(--bg); border:1px solid var(--border); color:var(--muted);
+  font-family:'Rajdhani',sans-serif; font-size:0.72rem; font-weight:600; letter-spacing:0.5px;
+  padding:7px 3px; border-radius:var(--radius); cursor:pointer; text-transform:uppercase;
+}
+.basemap-switch button:hover{color:var(--text); border-color:var(--accent);}
+.basemap-switch button.active{background:var(--accent); border-color:var(--accent); color:#06121f;}
 .map-toggle{
   display:flex; align-items:center; gap:8px; padding:8px 10px; margin-bottom:8px;
   background:var(--bg); border:1px solid var(--border); border-radius:var(--radius);
@@ -167,6 +175,13 @@ footer a{color:var(--accent2);}
   <div id="view-mapa" class="view active">
     <div id="map"></div>
     <div id="map-side">
+      <div class="map-side-title">Mapa base</div>
+      <div class="basemap-switch">
+        <button data-base="calles" class="active" title="Mapa de calles (OpenStreetMap)">Calles</button>
+        <button data-base="satelite" title="Imagen satelital">Satélite</button>
+        <button data-base="hibrido" title="Satélite con nombres y límites">Híbrido</button>
+      </div>
+
       <div class="map-side-title">Capas</div>
       <label class="map-toggle"><input type="checkbox" id="toggle-campos" checked><span class="legend-dot" style="background:#00c6a7"></span> Campos (parcelas)</label>
       <label class="map-toggle"><input type="checkbox" id="toggle-visitas" checked><span class="legend-dot" style="background:#ff4d6d"></span> Visitas recientes</label>
@@ -197,6 +212,7 @@ const TABLES = {
 };
 let DATA = {};
 let map, camposLayer, visitasLayer;
+let baseLayers = {}, labelsLayer;
 let refreshTimer;
 
 function statusSet(ok, label){
@@ -354,11 +370,40 @@ function updateStats(){
   document.getElementById('stat-ha').textContent = ha.toFixed(1);
 }
 
+function setBasemap(id){
+  if(!baseLayers.calles) return;
+  Object.keys(baseLayers).forEach(k=>{ if(map.hasLayer(baseLayers[k])) map.removeLayer(baseLayers[k]); });
+  if(map.hasLayer(labelsLayer)) map.removeLayer(labelsLayer);
+  const base = (id === 'hibrido') ? baseLayers.satelite : (baseLayers[id] || baseLayers.calles);
+  base.addTo(map);
+  if(id === 'hibrido') labelsLayer.addTo(map);
+  document.querySelectorAll('.basemap-switch button').forEach(b=>{
+    b.classList.toggle('active', b.dataset.base === id);
+  });
+  try{ localStorage.setItem('terminex_basemap', id); }catch(e){}
+}
+
 function initMap(){
   map = L.map('map', {zoomControl:true}).setView([-17.6, -63.4], 8);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+
+  baseLayers.calles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution:'&copy; OpenStreetMap', maxZoom:19
-  }).addTo(map);
+  });
+  baseLayers.satelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution:'Imágenes &copy; Esri, Maxar, Earthstar Geographics', maxZoom:20, maxNativeZoom:19
+  });
+  labelsLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom:20, maxNativeZoom:19, opacity:0.9
+  });
+
+  document.querySelectorAll('.basemap-switch button').forEach(b=>{
+    b.addEventListener('click', ()=> setBasemap(b.dataset.base));
+  });
+
+  let saved = 'calles';
+  try{ saved = localStorage.getItem('terminex_basemap') || 'calles'; }catch(e){}
+  setBasemap(saved);
+
   camposLayer = L.layerGroup().addTo(map);
   visitasLayer = L.layerGroup().addTo(map);
 
